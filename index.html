@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MQTT-термометр для Алисы</title>
+    <title>Автоматический MQTT-термометр для Алисы</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -9,95 +9,79 @@
         .connected { background: #e6ffed; color: #1a7f37; }
         .disconnected { background: #ffebe9; color: #cf222e; }
         #temp { font-size: 24px; font-weight: bold; }
-        input, button { padding: 8px; margin: 5px 0; width: 100%; }
-        button { background: #2da44e; color: white; border: none; cursor: pointer; }
+        .card { background: #f6f8fa; padding: 15px; border-radius: 6px; margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h1>Подключение MQTT к Алисе</h1>
+    <h1>Автоматический MQTT-термометр</h1>
     
-    <div>
-        <label>MQTT сервер:</label>
-        <input type="text" id="mqtt-server" value="m8.wqtt.ru">
-    </div>
-    
-    <div>
-        <label>Порт:</label>
-        <input type="number" id="mqtt-port" value="20102">
-    </div>
-    
-    <div>
-        <label>Топик температуры:</label>
-        <input type="text" id="mqtt-topic" value="bmp180/temperature">
-    </div>
-    
-    <div>
-        <label>Логин (если есть):</label>
-        <input type="text" id="u_IGGT9J">
-    </div>
-    
-    <div>
-        <label>Пароль (если есть):</label>
-        <input type="password" id="d1UXzoH8">
-    </div>
-    
-    <button id="connect-btn">Подключиться</button>
-    
-    <div id="status" class="disconnected">Статус: Отключено</div>
+    <div id="status" class="disconnected">Статус: Идет подключение к wqtt.ru...</div>
     <p>Текущая температура: <span id="temp">—</span> °C</p>
     
-    <h3>Инструкция для Алисы:</h3>
-    <p>1. Скажите: <em>"Добавить устройство"</em></p>
-    <p>2. Выберите <em>"Умный дом" → "Другое устройство"</em></p>
-    <p>3. Введите URL: <code id="api-url"></code></p>
+    <div class="card">
+        <h3>Инструкция для Алисы:</h3>
+        <p>1. Скажите: <strong>"Добавить устройство"</strong></p>
+        <p>2. Выберите <strong>"Умный дом" → "Другое устройство"</strong></p>
+        <p>3. Введите этот URL: <code id="api-url"></code></p>
+        <p>4. Назовите устройство (например, "Термометр")</p>
+    </div>
 
     <script>
+        // Настройки (меняйте здесь если нужно)
+        const config = {
+            mqttServer: "m8.wqtt.ru",
+            mqttPort: 20105, // WebSocket порт
+            mqttTopic: "bmp180/temperature",
+            mqttUser: "u_IGGT9J", // ваш логин (если есть)
+            mqttPass: "d1UXzoH8"  // ваш пароль (если есть)
+        };
+        
         // Текущая температура
         let currentTemp = 0;
         
-        // Подключение к MQTT
-        document.getElementById('connect-btn').addEventListener('click', () => {
-            const server = document.getElementById('mqtt-server').value;
-            const port = parseInt(document.getElementById('mqtt-port').value);
-            const topic = document.getElementById('mqtt-topic').value;
-            const user = document.getElementById('mqtt-user').value;
-            const pass = document.getElementById('mqtt-pass').value;
-            
-            const client = new Paho.MQTT.Client(server, port, "client_" + Math.random().toString(16));
+        // Автоподключение к MQTT
+        function connectToMQTT() {
+            const client = new Paho.MQTT.Client(
+                config.mqttServer,
+                config.mqttPort,
+                "client_" + Math.random().toString(16)
+            );
             
             client.onConnectionLost = () => {
                 updateStatus("Отключено от MQTT", "disconnected");
+                setTimeout(connectToMQTT, 5000); // Переподключение через 5 сек
             };
             
             client.onMessageArrived = (msg) => {
-                currentTemp = parseFloat(msg.payloadString);
+                currentTemp = parseFloat(msg.payloadString) || 0;
                 document.getElementById('temp').textContent = currentTemp.toFixed(1);
                 updateStatus("Данные получены", "connected");
             };
             
             const options = {
                 onSuccess: () => {
-                    client.subscribe(topic);
+                    client.subscribe(config.mqttTopic);
                     updateStatus("Подключено к MQTT", "connected");
                 },
                 onFailure: () => {
                     updateStatus("Ошибка подключения", "disconnected");
-                }
+                    setTimeout(connectToMQTT, 5000); // Повторная попытка
+                },
+                userName: config.mqttUser,
+                password: config.mqttPass,
+                useSSL: true
             };
             
-            if (user) options.userName = user;
-            if (pass) options.password = pass;
-            
             client.connect(options);
-        });
+        }
         
         // Эмуляция API Умного дома
         if (window.location.search.includes('yandex-api')) {
             const response = {
-                "request_id": "123",
+                "request_id": "auto_" + Date.now(),
                 "payload": {
                     "devices": [{
-                        "id": "temp_sensor",
+                        "id": "auto_temp_sensor",
                         "capabilities": [{
                             "type": "devices.capabilities.range",
                             "state": {
@@ -112,14 +96,19 @@
             document.close();
         }
         
-        // Показываем URL для Алисы
-        document.getElementById('api-url').textContent = window.location.href.split('?')[0] + '?yandex-api';
-        
+        // Обновление статуса
         function updateStatus(text, status) {
             const el = document.getElementById('status');
             el.textContent = "Статус: " + text;
             el.className = status;
         }
+        
+        // Показываем URL для Алисы
+        document.getElementById('api-url').textContent = 
+            window.location.href.split('?')[0] + '?yandex-api';
+        
+        // Автозапуск при загрузке
+        window.addEventListener('load', connectToMQTT);
     </script>
 </body>
 </html>
