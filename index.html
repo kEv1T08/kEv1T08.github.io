@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MQTT to Yandex Smart Home</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        #status { color: green; font-weight: bold; }
+        button { padding: 10px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Температурный датчик для Алисы</h1>
+    <p>Текущая температура: <span id="temperature">—</span> °C</p>
+    <p>Статус: <span id="status">Не подключено</span></p>
+    <button onclick="sendToYandex()">Отправить температуру в Умный дом</button>
+
+    <script>
+        // Настройки MQTT (wqtt.ru)
+        const mqttBroker = "m8.wqtt.ru";
+        const mqttPort = 20102; // или 8883 для SSL
+        const mqttTopic = "bmp180/temperature";
+        const mqttUser = "u_IGGT9J";
+        const mqttPass = "d1UXzoH8";
+
+        let currentTemp = 0;
+
+        // Подключение к MQTT
+        const client = new Paho.MQTT.Client(mqttBroker, mqttPort, "web-client");
+        
+        client.onConnectionLost = (response) => {
+            document.getElementById("status").textContent = "Ошибка подключения";
+        };
+
+        client.onMessageArrived = (message) => {
+            currentTemp = parseFloat(message.payloadString);
+            document.getElementById("temperature").textContent = currentTemp;
+            document.getElementById("status").textContent = "Данные получены";
+        };
+
+        function connectMqtt() {
+            client.connect({
+                userName: mqttUser,
+                password: mqttPass,
+                onSuccess: () => {
+                    document.getElementById("status").textContent = "Подключено к MQTT";
+                    client.subscribe(mqttTopic);
+                },
+                onFailure: () => {
+                    document.getElementById("status").textContent = "Ошибка подключения к MQTT";
+                }
+            });
+        }
+
+        // Отправка в Умный дом Алисы (через ваш сервер)
+        function sendToYandex() {
+            fetch('https://kev1t08.github.io/update-temperature', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ temperature: currentTemp })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert("Температура отправлена в Алису!");
+            })
+            .catch(error => {
+                alert("Ошибка: " + error);
+            });
+        }
+
+        // Автоподключение при загрузке
+        window.onload = connectMqtt;
+    </script>
+</body>
+</html>
